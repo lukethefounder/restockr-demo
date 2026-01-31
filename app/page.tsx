@@ -12,8 +12,11 @@ export default function HomePage() {
   const [email, setEmail] = useState('');
   const [lang, setLang] = useState<Lang>('en');
 
-    const handleContinue = async () => {
-    if (!email.trim()) {
+  const t = translations[lang];
+
+  const handleContinue = () => {
+    const trimmed = email.trim();
+    if (!trimmed) {
       alert(
         lang === 'en'
           ? 'Please enter your email (demo only).'
@@ -22,53 +25,43 @@ export default function HomePage() {
       return;
     }
 
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      });
+    const lower = trimmed.toLowerCase();
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        const msg =
-          data?.error ||
-          (lang === 'en'
-            ? 'Login failed. Ensure you are using a demo email from the seed (founder@demo.com, buyer@demo.com, dist@demo.com).'
-            : 'Inicio de sesión fallido. Asegúrate de usar un correo demo de la semilla (founder@demo.com, buyer@demo.com, dist@demo.com).');
-        alert(msg);
-        return;
-      }
+    // Map demo emails to roles.
+    let userRole: Role | null = null;
 
-      const data = await res.json();
-      const userRole = data.role as Role;
+    if (lower === 'buyer1@demo.com' || lower === 'buyer2@demo.com') {
+      userRole = 'buyer';
+    } else if (lower === 'dist@demo.com') {
+      userRole = 'distributor';
+    } else if (lower === 'founder@demo.com') {
+      userRole = 'founder';
+    }
 
-      // Route based on actual role from DB (ignoring selected pill for safety)
-      if (userRole === 'buyer') {
-        router.push('/buyer');
-      } else if (userRole === 'distributor') {
-        router.push('/distributor');
-      } else if (userRole === 'founder') {
-        router.push('/founder');
-      } else {
-        // Unexpected role
-        alert(
-          lang === 'en'
-            ? 'Unknown role returned from server.'
-            : 'Rol desconocido devuelto por el servidor.'
-        );
-      }
-    } catch (err) {
-      console.error('Login error:', err);
+    if (!userRole) {
       alert(
         lang === 'en'
-          ? 'Network or server error during login (demo).'
-          : 'Error de red o servidor durante el inicio de sesión (demo).'
+          ? 'Unknown demo email. Use buyer1@demo.com, buyer2@demo.com, dist@demo.com, or founder@demo.com.'
+          : 'Correo demo desconocido. Usa buyer1@demo.com, buyer2@demo.com, dist@demo.com o founder@demo.com.'
       );
+      return;
+    }
+
+    // Optionally, we can warn if the selected pill doesn't match the detected role.
+    if (userRole !== role) {
+      // Just update the role pill to reflect actual role.
+      setRole(userRole);
+    }
+
+    // Route based on mapped role
+    if (userRole === 'buyer') {
+      router.push('/buyer');
+    } else if (userRole === 'distributor') {
+      router.push('/distributor');
+    } else {
+      router.push('/founder');
     }
   };
-
-  const t = translations[lang];
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-50">
@@ -188,24 +181,27 @@ function LangPill({ label, value, lang, setLang }: LangPillProps) {
   );
 }
 
-// 📝 Simple translation dictionary
-const translations: Record<Lang, {
-  heading: string;
-  subheading: string;
-  emailLabel: string;
-  emailPlaceholder: string;
-  roleLabel: string;
-  roles: { buyer: string; distributor: string; founder: string };
-  continueButton: Record<Role, string>;
-  footer: string;
-}> = {
+// Simple translation dictionary
+const translations: Record<
+  Lang,
+  {
+    heading: string;
+    subheading: string;
+    emailLabel: string;
+    emailPlaceholder: string;
+    roleLabel: string;
+    roles: { buyer: string; distributor: string; founder: string };
+    continueButton: Record<Role, string>;
+    footer: string;
+  }
+> = {
   en: {
     heading: 'Sign in to your portal',
     subheading:
-      "This is a demo login screen. In the real app, you'll authenticate with email and be routed to the correct portal based on your role.",
+      "This is a demo login screen. Use one of the demo emails and you'll be routed to the correct portal.",
     emailLabel: 'Email (demo only)',
-    emailPlaceholder: 'you@example.com',
-    roleLabel: 'Choose your role',
+    emailPlaceholder: 'buyer1@demo.com, buyer2@demo.com, dist@demo.com, founder@demo.com',
+    roleLabel: 'Choose your role (for preview)',
     roles: {
       buyer: 'Buyer',
       distributor: 'Distributor',
@@ -217,15 +213,15 @@ const translations: Record<Lang, {
       founder: 'Continue to founder portal',
     },
     footer:
-      'Later, this page will be replaced by real authentication (NextAuth or custom). For now, it just routes you to /buyer, /distributor, or /founder based on the role you select.',
+      'This is a demo-only login. Your role is determined by the demo email you use. No real accounts or passwords are required.',
   },
   es: {
     heading: 'Inicia sesión en tu portal',
     subheading:
-      'Esta es una pantalla de inicio de sesión de demostración. En la aplicación real, iniciarás sesión con tu correo y serás dirigido al portal correcto según tu rol.',
+      'Esta es una pantalla de inicio de sesión de demostración. Usa uno de los correos demo y serás dirigido al portal correcto.',
     emailLabel: 'Correo electrónico (solo demo)',
-    emailPlaceholder: 'tú@ejemplo.com',
-    roleLabel: 'Elige tu rol',
+    emailPlaceholder: 'buyer1@demo.com, buyer2@demo.com, dist@demo.com, founder@demo.com',
+    roleLabel: 'Elige tu rol (para vista previa)',
     roles: {
       buyer: 'Comprador',
       distributor: 'Distribuidor',
@@ -237,6 +233,6 @@ const translations: Record<Lang, {
       founder: 'Ir al portal de fundador',
     },
     footer:
-      'Más adelante, esta página será reemplazada por autenticación real (NextAuth o personalizada). Por ahora, solo te lleva a /buyer, /distributor o /founder según el rol que elijas.',
+      'Este inicio de sesión es solo demo. Tu rol se determina por el correo demo que uses. No se necesitan cuentas reales ni contraseñas.',
   },
 };
