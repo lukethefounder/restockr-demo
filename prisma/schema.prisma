@@ -1,0 +1,195 @@
+// prisma/schema.prisma
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+
+/// User roles in Restockr.
+/// - buyer: restaurant/location-side ordering user
+/// - distributor: supplier-side user
+/// - founder: owner / admin for the tenant
+enum UserRole {
+  buyer
+  distributor
+  founder
+}
+
+enum OrderStatus {
+  draft
+  submitted
+  confirmed
+  delivered
+  canceled
+}
+
+enum LocationDistributorStatus {
+  active
+  invited
+  blocked
+}
+
+enum InviteStatus {
+  pending
+  accepted
+  expired
+}
+
+/// Top-level tenant (your restaurant group / business).
+model Tenant {
+  id          String       @id @default(cuid())
+  name        String
+  createdAt   DateTime     @default(now())
+  users       User[]
+  locations   Location[]
+  distributors Distributor[]
+  invites     DistributorInvite[]   // 👈 back-relation added
+}
+
+/// A user in the system (buyer, distributor, or founder).
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  role      UserRole
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  createdAt DateTime @default(now())
+
+  buyerLocations BuyerLocation[]
+  distributor    Distributor?
+
+  createdInvites DistributorInvite[]   // 👈 back-relation added
+}
+
+/// Physical or logical restaurant location (e.g. "Phoenix - Downtown").
+model Location {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  city      String?
+  region    String?
+  createdAt DateTime @default(now())
+
+  orders       Order[]
+  buyerLinks   BuyerLocation[]
+  distributors LocationDistributor[]
+}
+
+/// Join table between a Buyer user and a Location.
+model BuyerLocation {
+  id         String   @id @default(cuid())
+  userId     String
+  locationId String
+
+  buyer    User     @relation(fields: [userId], references: [id])
+  location Location @relation(fields: [locationId], references: [id])
+}
+
+/// Distributor entity (supplier-side).
+model Distributor {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+
+  name      String
+  email     String   @unique
+  region    String?
+
+  createdAt DateTime @default(now())
+
+  userId    String?  @unique
+  user      User?    @relation(fields: [userId], references: [id])
+
+  locations LocationDistributor[]
+  prices    DistributorPrice[]
+}
+
+/// Which distributors serve which locations.
+model LocationDistributor {
+  id            String                     @id @default(cuid())
+  locationId    String
+  distributorId String
+  status        LocationDistributorStatus  @default(active)
+
+  location    Location    @relation(fields: [locationId], references: [id])
+  distributor Distributor @relation(fields: [distributorId], references: [id])
+
+  @@unique([locationId, distributorId])
+}
+
+/// Nightly order for a location.
+model Order {
+  id          String      @id @default(cuid())
+  locationId  String
+  location    Location    @relation(fields: [locationId], references: [id])
+
+  status      OrderStatus @default(draft)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @default(now())
+
+  lines       OrderLine[]
+}
+
+/// Order line item.
+model OrderLine {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id])
+
+  sku       String
+  name      String
+  unit      String
+
+  par       Float
+  onHand    Float
+
+  orderedQty     Float?
+  unitPriceCents Int?
+}
+
+/// Weekly pricing for a given distributor + sku + week.
+enum PriceStatus {
+  on_time
+  needs_update
+  missing
+}
+
+model DistributorPrice {
+  id            String       @id @default(cuid())
+  distributorId String
+  distributor   Distributor  @relation(fields: [distributorId], references: [id])
+
+  sku           String
+  weekStart     DateTime
+
+  priceCents    Int?
+  submittedAt   DateTime?
+  status        PriceStatus  @default(missing)
+
+  @@unique([distributorId, sku, weekStart])
+}
+
+/// Distributor invite flow.
+model DistributorInvite {
+  id              String       @id @default(cuid())
+  tenantId        String
+  tenant          Tenant       @relation(fields: [tenantId], references: [id])
+
+  email           String
+  name            String
+  token           String       @unique
+  status          InviteStatus @default(pending)
+
+  createdByUserId String
+  createdByUser   User         @relation(fields: [createdByUserId], references: [id])
+
+  createdAt       DateTime     @default(now())
+  acceptedAt      DateTime?
+}
