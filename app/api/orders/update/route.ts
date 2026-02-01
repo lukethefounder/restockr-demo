@@ -1,8 +1,6 @@
-// app/api/orders/update/route.ts
 import { NextResponse } from 'next/server';
 
 // Helper: only load PrismaClient when we actually want to use it.
-// This prevents Prisma from initializing during Vercel builds if we short-circuit.
 async function getPrisma() {
   const { PrismaClient } = await import('@prisma/client');
   return new PrismaClient();
@@ -11,21 +9,22 @@ async function getPrisma() {
 // POST /api/orders/update
 // Body: { orderId: string; lines: { sku: string; onHand: number }[] }
 export async function POST(req: Request) {
-  // On Vercel (demo), skip DB writes entirely and just pretend success.
-  // Vercel sets process.env.VERCEL = '1' in both build and runtime.
-  if (process.env.VERCEL === '1') {
-    console.log('[orders/update] Skipping DB update on Vercel demo.');
+  const isDemo = process.env.DEMO_MODE === 'true';
+
+  // In demo mode (e.g., Vercel), skip DB writes and just return success.
+  if (isDemo) {
+    console.log('[orders/update] DEMO_MODE=true, skipping DB update.');
     return NextResponse.json(
       {
         success: true,
         message:
-          'DB updates are disabled in the Vercel demo environment. Changes are local to this session.',
+          'DB updates are disabled in demo mode. Changes are local to this session.',
       },
       { status: 200 }
     );
   }
 
-  // Local dev / non-Vercel: use Prisma and update the real DB.
+  // In real mode (local/dev), use Prisma to update the DB.
   try {
     const body = await req.json().catch(() => null);
     const orderId = body?.orderId as string | undefined;
@@ -40,19 +39,18 @@ export async function POST(req: Request) {
 
     const prisma = await getPrisma();
 
-    // Verify the order exists
     const order = await prisma.order.findUnique({
       where: { id: orderId },
     });
 
     if (!order) {
+      await prisma.$disconnect();
       return NextResponse.json(
         { error: 'Order not found' },
         { status: 404 }
       );
     }
 
-    // Update each line's onHand
     for (const line of lines) {
       if (!line.sku) continue;
 
